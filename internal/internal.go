@@ -32,7 +32,7 @@ func ParseLogArgs(args []any, f AttrFunc) {
 	am := make(map[string]slog.Attr)
 	for len(args) > 0 {
 		var attrs []slog.Attr
-		attrs, args = argsToAttr(args)
+		attrs, args = argsToAttrs(args)
 		for _, a := range attrs {
 			if isEmptyGroup(a.Value) {
 				continue
@@ -65,7 +65,7 @@ func ToSlice[K comparable, V any](m map[K]V) []V {
 
 const badKey = "!BADKEY"
 
-func argsToAttr(args []any) ([]slog.Attr, []any) {
+func argsToAttrs(args []any) ([]slog.Attr, []any) {
 	switch x := args[0].(type) {
 	case string:
 		if len(args) == 1 {
@@ -74,8 +74,11 @@ func argsToAttr(args []any) ([]slog.Attr, []any) {
 		return []slog.Attr{slog.Any(x, args[1])}, args[2:]
 	case context.Context:
 		return ToSlice(logAttrsFromContext(x)), args[1:]
-	case error:
-		return logAttrsFromError(x), args[1:]
+	case slog.LogValuer:
+		if v := x.LogValue(); v.Kind() == slog.KindGroup {
+			return v.Group(), args[1:]
+		}
+		return []slog.Attr{slog.Any(badKey, x)}, args[1:]
 	case slog.Attr:
 		return []slog.Attr{x}, args[1:]
 	default:
@@ -88,17 +91,6 @@ func isEmptyGroup(v slog.Value) bool {
 		return false
 	}
 	return len(v.Group()) == 0
-}
-
-func logAttrsFromError(err error) []slog.Attr {
-	if lv, ok := err.(slog.LogValuer); ok {
-		if v := lv.LogValue(); v.Kind() == slog.KindGroup {
-			return v.Group()
-		} else {
-			panic(fmt.Sprintf("non-group value in error: %v", v))
-		}
-	}
-	return nil
 }
 
 func logAttrsFromContext(ctx context.Context) map[string]slog.Attr {

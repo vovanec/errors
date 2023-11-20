@@ -4,33 +4,35 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 
 	"github.com/vovanec/errors/internal"
 )
 
 const errKey = "error"
 
-type cpError struct {
+type sError struct {
 	err   error
 	attrs map[string]slog.Attr
 }
 
-func (e *cpError) LogValue() slog.Value {
-	return slog.GroupValue(
-		append(
-			internal.ToSlice(e.attrs),
-			slog.String(errKey, e.err.Error()),
-		)...,
-	)
+func (e *sError) LogValue() slog.Value {
+
+	attrs := append(internal.ToSlice(e.attrs), slog.String(errKey, e.err.Error()))
+	sort.Slice(attrs, func(i, j int) bool {
+		return attrs[i].Key < attrs[j].Key
+	})
+
+	return slog.GroupValue(attrs...)
 }
 
-func (e *cpError) Error() string {
+func (e *sError) Error() string {
 	return e.err.Error()
 }
 
 // Unwrap returns the result of calling the Unwrap method on err, if error's
 // type contains an Unwrap method returning error (otherwise nil).
-func (e *cpError) Unwrap() error {
+func (e *sError) Unwrap() error {
 	return e.err
 }
 
@@ -49,7 +51,7 @@ func New(message string, args ...any) error {
 		return errors.New(message)
 	}
 
-	return &cpError{
+	return &sError{
 		err:   errors.New(message),
 		attrs: am,
 	}
@@ -77,7 +79,7 @@ func Wrap(err error, message string, args ...any) error {
 		return fmt.Errorf("%s: %w", message, err)
 	}
 
-	return &cpError{
+	return &sError{
 		err:   fmt.Errorf("%s: %w", message, err),
 		attrs: am,
 	}

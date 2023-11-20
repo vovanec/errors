@@ -86,9 +86,7 @@ func main() {
 	}
 
 	// Use loghelper.Context to attach log attributes to pass them down to the callee.
-	ctx := loghelper.Context(context.Background(),
-		slog.Any("application", app),
-	)
+	ctx := loghelper.Context(context.Background(), "application", app)
 
 	// loghelper.Attr can be used instead of slog attribute constructors
 	// if we want to extract log attributes from context or errors.

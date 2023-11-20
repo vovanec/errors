@@ -3,6 +3,7 @@ package loghelper
 import (
 	"context"
 	"log/slog"
+	"sort"
 
 	"github.com/vovanec/errors/internal"
 )
@@ -20,6 +21,10 @@ func Attr(args ...any) slog.Attr {
 	} else if len(attrs) < 2 {
 		return attrs[0]
 	}
+
+	sort.Slice(attrs, func(i, j int) bool {
+		return attrs[i].Key < attrs[j].Key
+	})
 
 	return slog.Attr{
 		Key:   "",
