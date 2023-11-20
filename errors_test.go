@@ -1,6 +1,8 @@
 package errors
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -9,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/vovanec/errors/loghelper"
 )
 
 type testErr struct {
@@ -167,4 +170,129 @@ func TestErrorComparison(t *testing.T) {
 			assert.True(t, Is(td.want, td.want))
 		})
 	}
+}
+
+type AppVersion struct {
+	Major int
+	Minor int
+	Patch int
+}
+
+func (v AppVersion) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.Int("major", v.Major),
+		slog.Int("minor", v.Minor),
+		slog.Int("patch", v.Patch),
+	)
+}
+
+type Application struct {
+	Name    string
+	Version AppVersion
+	Build   string
+}
+
+func (a Application) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("name", a.Name),
+		slog.Any("version", a.Version),
+		slog.Group("build",
+			slog.String("hash", a.Build),
+		),
+	)
+}
+
+type InlineArgs struct {
+	Arg1 string
+	Arg2 string
+	Arg3 string
+}
+
+func (a InlineArgs) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("arg1", a.Arg1),
+		slog.String("arg2", a.Arg2),
+		slog.String("arg3", a.Arg3),
+	)
+}
+
+const expectedLog = `{"time":"","level":"INFO","msg":"application started","application":{"name":"vovan","version":{"major":1,"minor":7,"patch":2},"build":{"hash":"20b8c3f"}},"arg1":"ARG1","arg2":"ARG2","arg3":"ARG3","x":"x"}
+{"time":"","level":"INFO","msg":"logging in doSomethingElse","application":{"name":"vovan","version":{"major":1,"minor":7,"patch":2},"build":{"hash":"20b8c3f"}},"arg1":"ARG1","arg2":"ARG2","arg3":"ARG3"}
+{"time":"","level":"ERROR","msg":"error occurred","a":"a","application":{"name":"vovan","version":{"major":1,"minor":7,"patch":2},"build":{"hash":"20b8c3f"}},"arg1":"ARG1","arg2":"ARG2","arg3":"ARG3","b":"b","c":"c","error":"error in doSomething: error in doSomethingElse"}
+`
+
+func TestErrorLogging(t *testing.T) {
+
+	var buf bytes.Buffer
+	logger := slog.New(
+		slog.NewJSONHandler(&buf, &slog.HandlerOptions{
+			Level: slog.LevelInfo,
+			ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+				if a.Key == "time" {
+					a.Value = slog.StringValue("")
+				}
+				return a
+			},
+		}),
+	)
+
+	app := Application{
+		Name:  "vovan",
+		Build: "20b8c3f",
+		Version: AppVersion{
+			Major: 1,
+			Minor: 7,
+			Patch: 2,
+		},
+	}
+
+	inlineArgs := InlineArgs{
+		Arg1: "ARG1",
+		Arg2: "ARG2",
+		Arg3: "ARG3",
+	}
+
+	ctx := loghelper.Context(context.Background(), inlineArgs, "application", app)
+
+	// loghelper.Attr can be used instead of slog attribute constructors
+	// if we want to extract log attributes from context or errors.
+	logger.Info("application started",
+		loghelper.Attr(
+			ctx,
+			slog.String("x", "x"),
+		),
+	)
+
+	err := doSomething(ctx, logger)
+	assert.Error(t, err)
+	logger.Error("error occurred",
+		loghelper.Attr(ctx, err),
+	)
+
+	assert.Equal(t, expectedLog, buf.String())
+}
+
+func doSomethingElse(ctx context.Context, logger *slog.Logger) error {
+
+	logger.Info("logging in doSomethingElse",
+		loghelper.Attr(ctx))
+
+	return New("error in doSomethingElse",
+		slog.String("a", "a"),
+	)
+}
+
+func doSomething(ctx context.Context, logger *slog.Logger) error {
+	if err := doSomethingElse(ctx, logger); err != nil {
+		return Wrap(err, "error in doSomething",
+			loghelper.Attr(
+				// usually one doesn't have to attach the context since caller
+				// already has it, but it can be done.
+				ctx,
+				slog.String("b", "b"),
+				slog.String("c", "c"),
+			),
+		)
+	}
+	return nil
 }

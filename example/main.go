@@ -37,7 +37,6 @@ func (a Application) LogValue() slog.Value {
 			slog.String("hash", a.Build),
 		),
 	)
-
 }
 
 func doSomethingElse(ctx context.Context) error {
