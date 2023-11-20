@@ -75,8 +75,10 @@ func TestWrappedError(t *testing.T) {
 	assert.Equal(t, Unwrap(err), origErr)
 
 	assert.True(t, As(err, &compatibleErr))
-	assert.Equal(t, compatibleErr.msg, errMsg)
 	assert.False(t, As(err, &osErr))
+	if assert.NotNil(t, compatibleErr) {
+		assert.Equal(t, compatibleErr.msg, errMsg)
+	}
 }
 
 func TestWrappedErrorWithLogAttr(t *testing.T) {
