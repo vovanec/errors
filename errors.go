@@ -4,19 +4,21 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+
+	"github.com/vovanec/errors/internal"
 )
 
 const errKey = "error"
 
 type cpError struct {
-	err  error
-	attr map[string]slog.Attr
+	err   error
+	attrs map[string]slog.Attr
 }
 
 func (e *cpError) LogValue() slog.Value {
 	return slog.GroupValue(
 		append(
-			toSlice(e.attr),
+			internal.ToSlice(e.attrs),
 			slog.String(errKey, e.err.Error()),
 		)...,
 	)
@@ -32,59 +34,52 @@ func (e *cpError) Unwrap() error {
 	return e.err
 }
 
-// New returns an error that formats as the given text with optional log attributes.
-func New(message string, attr ...any) error {
+// New returns an error that formats as the given text with optional log args.
+func New(message string, args ...any) error {
 
-	var record slog.Record
-	record.Add(attr...)
+	am := make(map[string]slog.Attr)
+	internal.ParseLogArgs(
+		args,
+		func(a slog.Attr) {
+			am[a.Key] = a
+		},
+	)
 
-	m := make(map[string]slog.Attr)
-	record.Attrs(func(a slog.Attr) bool {
-		m[a.Key] = a
-		return true
-	})
-
-	if len(m) < 1 {
+	if len(am) < 1 {
 		return errors.New(message)
 	}
 
 	return &cpError{
-		err:  errors.New(message),
-		attr: m,
+		err:   errors.New(message),
+		attrs: am,
 	}
 }
 
 // Wrap wraps the original error and new returned error will implement an Unwrap interface.
-// This also will add log attributes to the error if there are any.
-func Wrap(err error, message string, attr ...any) error {
+// This also will add log args to the error if there are any.
+func Wrap(err error, message string, args ...any) error {
 
 	if err == nil {
 		return nil
 	}
 
-	newAttr := make(map[string]slog.Attr)
-	if lv, ok := err.(slog.LogValuer); ok {
-		for _, a := range lv.LogValue().Group() {
+	am := make(map[string]slog.Attr)
+	internal.ParseLogArgs(
+		append([]any{err}, args...),
+		func(a slog.Attr) {
 			if a.Key != errKey {
-				newAttr[a.Key] = a
+				am[a.Key] = a
 			}
-		}
-	}
+		},
+	)
 
-	var record slog.Record
-	record.Add(attr...)
-	record.Attrs(func(a slog.Attr) bool {
-		newAttr[a.Key] = a
-		return true
-	})
-
-	if len(newAttr) < 1 {
+	if len(am) < 1 {
 		return fmt.Errorf("%s: %w", message, err)
 	}
 
 	return &cpError{
-		err:  fmt.Errorf("%s: %w", message, err),
-		attr: newAttr,
+		err:   fmt.Errorf("%s: %w", message, err),
+		attrs: am,
 	}
 }
 
@@ -110,12 +105,4 @@ func Is(err, target error) bool {
 // target to that error value and returns true. Otherwise, it returns false.
 func As(err error, target interface{}) bool {
 	return errors.As(err, target)
-}
-
-func toSlice[K comparable, V any](m map[K]V) []V {
-	var ret []V
-	for _, a := range m {
-		ret = append(ret, a)
-	}
-	return ret
 }

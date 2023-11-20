@@ -3,52 +3,31 @@ package loghelper
 import (
 	"context"
 	"log/slog"
+
+	"github.com/vovanec/errors/internal"
 )
 
-func Error(err error) slog.Attr {
-	if lv, ok := err.(slog.LogValuer); ok {
-		return slog.Any("", lv.LogValue())
-	}
-	return slog.Attr{}
-}
+// Attr parses log args and returns a either a single log attribute or unnamed group.
+func Attr(args ...any) slog.Attr {
 
-func Context(ctx context.Context) slog.Attr {
-	var ret []any
-	for _, a := range logAttrsFromContext(ctx) {
-		ret = append(ret, a)
-	}
-	return slog.Group("", ret...)
-}
-
-func WithAttrs(ctx context.Context, attr ...any) context.Context {
-
-	var (
-		attrMap = logAttrsFromContext(ctx)
-		record  slog.Record
-	)
-
-	record.Add(attr...)
-	record.Attrs(func(a slog.Attr) bool {
-		attrMap[a.Key] = a
-		return true
+	var attrs []slog.Attr
+	internal.ParseLogArgs(args, func(a slog.Attr) {
+		attrs = append(attrs, a)
 	})
 
-	return context.WithValue(
-		ctx,
-		logAttrCtxKey,
-		attrMap,
-	)
+	if len(attrs) < 1 {
+		return slog.Attr{}
+	} else if len(attrs) < 2 {
+		return attrs[0]
+	}
+
+	return slog.Attr{
+		Key:   "",
+		Value: slog.GroupValue(attrs...),
+	}
 }
 
-type (
-	logAttrCtxKeyType struct{}
-)
-
-var logAttrCtxKey logAttrCtxKeyType
-
-func logAttrsFromContext(ctx context.Context) map[string]slog.Attr {
-	if attr, ok := ctx.Value(logAttrCtxKey).(map[string]slog.Attr); ok {
-		return attr
-	}
-	return make(map[string]slog.Attr)
+// Context returns a copy of parent context with attached log args.
+func Context(ctx context.Context, args ...any) context.Context {
+	return internal.ContextWithLogArgs(ctx, args...)
 }

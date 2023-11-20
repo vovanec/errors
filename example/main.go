@@ -43,7 +43,7 @@ func (a Application) LogValue() slog.Value {
 func doSomethingElse(ctx context.Context) error {
 
 	slog.Info("logging in doSomethingElse",
-		loghelper.Context(ctx))
+		loghelper.Attr(ctx))
 
 	return errors.New("error in doSomethingElse",
 		slog.String("a", "a"),
@@ -53,7 +53,13 @@ func doSomethingElse(ctx context.Context) error {
 func doSomething(ctx context.Context) error {
 	if err := doSomethingElse(ctx); err != nil {
 		return errors.Wrap(err, "error in doSomething",
-			slog.String("b", "b"),
+			loghelper.Attr(
+				// usually one doesn't have to attach the context since caller
+				// already has it, but it can be done.
+				ctx,
+				slog.String("b", "b"),
+				slog.String("c", "c"),
+			),
 		)
 	}
 	return nil
@@ -79,14 +85,23 @@ func main() {
 		},
 	}
 
-	ctx := loghelper.WithAttrs(context.Background(),
+	// Use loghelper.Context to attach log attributes to pass them down to the callee.
+	ctx := loghelper.Context(context.Background(),
 		slog.Any("application", app),
 	)
 
+	// loghelper.Attr can be used instead of slog attribute constructors
+	// if we want to extract log attributes from context or errors.
+	slog.Info("application started",
+		loghelper.Attr(
+			ctx,
+			slog.String("x", "x"),
+		),
+	)
+
 	if err := doSomething(ctx); err != nil {
-		slog.ErrorContext(ctx, "error",
-			loghelper.Context(ctx),
-			loghelper.Error(err),
+		slog.Error("error occurred",
+			loghelper.Attr(ctx, err),
 		)
 	}
 }
