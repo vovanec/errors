@@ -74,13 +74,20 @@ func argsToAttrs(args []any) ([]slog.Attr, []any) {
 		return []slog.Attr{slog.Any(x, args[1])}, args[2:]
 	case context.Context:
 		return ToSlice(logAttrsFromContext(x)), args[1:]
+	case slog.Attr:
+		return []slog.Attr{x}, args[1:]
+	case error:
+		if lv, ok := x.(slog.LogValuer); ok {
+			if v := lv.LogValue(); v.Kind() == slog.KindGroup {
+				return v.Group(), args[1:]
+			}
+		}
+		return nil, args[1:]
 	case slog.LogValuer:
 		if v := x.LogValue(); v.Kind() == slog.KindGroup {
 			return v.Group(), args[1:]
 		}
 		return []slog.Attr{slog.Any(badKey, x)}, args[1:]
-	case slog.Attr:
-		return []slog.Attr{x}, args[1:]
 	default:
 		return []slog.Attr{slog.Any(badKey, x)}, args[1:]
 	}

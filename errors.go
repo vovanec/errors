@@ -4,21 +4,35 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"runtime"
 	"sort"
 
 	"github.com/vovanec/errors/internal"
 )
 
-const errKey = "error"
+const (
+	errKey       = "error"
+	msgKey       = "msg"
+	errOriginKey = "origin"
+)
 
 type sError struct {
-	err   error
-	attrs map[string]slog.Attr
+	err    error
+	origin errorOrigin
+	attrs  map[string]slog.Attr
 }
 
 func (e *sError) LogValue() slog.Value {
 
-	attrs := append(internal.ToSlice(e.attrs), slog.String(errKey, e.err.Error()))
+	errGroup := slog.Group(errKey, slog.String(msgKey, e.err.Error()))
+	if !e.origin.Empty() {
+		errGroup = slog.Group(errKey,
+			slog.String(msgKey, e.err.Error()),
+			slog.String(errOriginKey, e.origin.String()),
+		)
+	}
+	attrs := append(internal.ToSlice(e.attrs), errGroup)
+
 	sort.Slice(attrs, func(i, j int) bool {
 		return attrs[i].Key < attrs[j].Key
 	})
@@ -52,8 +66,9 @@ func New(message string, args ...any) error {
 	}
 
 	return &sError{
-		err:   errors.New(message),
-		attrs: am,
+		err:    errors.New(message),
+		attrs:  am,
+		origin: getOrigin(2),
 	}
 }
 
@@ -79,9 +94,20 @@ func Wrap(err error, message string, args ...any) error {
 		return fmt.Errorf("%s: %w", message, err)
 	}
 
+	var (
+		sErr   *sError
+		origin errorOrigin
+	)
+	if As(err, &sErr) {
+		origin = sErr.origin
+	} else {
+		origin = getOrigin(2)
+	}
+
 	return &sError{
-		err:   fmt.Errorf("%s: %w", message, err),
-		attrs: am,
+		err:    fmt.Errorf("%s: %w", message, err),
+		attrs:  am,
+		origin: origin,
 	}
 }
 
@@ -107,4 +133,27 @@ func Is(err, target error) bool {
 // target to that error value and returns true. Otherwise, it returns false.
 func As(err error, target interface{}) bool {
 	return errors.As(err, target)
+}
+
+func getOrigin(n int) errorOrigin {
+	if _, file, line, ok := runtime.Caller(n); ok {
+		return errorOrigin{
+			Line: line,
+			File: file,
+		}
+	}
+	return errorOrigin{}
+}
+
+type errorOrigin struct {
+	Line int
+	File string
+}
+
+func (o errorOrigin) String() string {
+	return fmt.Sprintf("%s:%d", o.File, o.Line)
+}
+
+func (o errorOrigin) Empty() bool {
+	return o.File == ""
 }

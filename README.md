@@ -6,8 +6,14 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"time"
 
 	"github.com/vovanec/errors"
 	"github.com/vovanec/errors/loghelper"
@@ -41,32 +47,131 @@ func (a Application) LogValue() slog.Value {
 			slog.String("hash", a.Build),
 		),
 	)
-
 }
 
-func doSomethingElse(ctx context.Context) error {
+func dbGetUser(ctx context.Context, _ string) error {
 
-	slog.Info("logging in doSomethingElse",
+	/* This will dump the JSON log similar to below object, with log attributes provided by the caller in a context:
+	{
+	  "time": "2023-11-24T20:39:57.203458-06:00",
+	  "level": "INFO",
+	  "msg": "getting user from the database",
+	  "application": {
+	    "name": "vovan",
+	    "version": {
+	      "major": 1,
+	      "minor": 7,
+	      "patch": 2
+	    },
+	    "build": {
+	      "hash": "20b8c3f"
+	    }
+	  },
+	  "request": {
+	    "id": "b4133182-89a6-11ee-b9d1-0242ac120002"
+	  },
+	  "user": {
+	    "id": "8b50d0c8-015a-497c-b98a-cc69fec2f9ed"
+	  }
+	}
+	*/
+	slog.Info("getting user from the database",
 		loghelper.Attr(ctx))
 
-	return errors.New("error in doSomethingElse",
-		slog.String("a", "a"),
+	// code to get user data from the database
+
+	return errors.Wrap(sql.ErrNoRows, "error getting user from database",
+		// Log attributes can be attached to the error, they will be logged by the caller.
+		loghelper.Attr(
+			slog.Group("db",
+				slog.String("query", "SELECT first_name, last_name FROM users WHERE id=$1"),
+			),
+		),
 	)
 }
 
-func doSomething(ctx context.Context) error {
-	if err := doSomethingElse(ctx); err != nil {
-		return errors.Wrap(err, "error in doSomething",
+func handleGetUser(ctx context.Context, userId string) error {
+	if err := dbGetUser(ctx, userId); err != nil {
+		// Error can be wrapped multiple times and additional log attributes can be attached.
+		return errors.Wrap(err, "error in handleGetUser",
+			// Log attributes can be attached to the error, they will be logged by the caller.
 			loghelper.Attr(
-				// usually one doesn't have to attach the context since caller
-				// already has it, but it can be done.
-				ctx,
-				slog.String("b", "b"),
-				slog.String("c", "c"),
+				slog.Any("execution_time", time.Now()),
 			),
 		)
 	}
 	return nil
+}
+
+func (a Application) HandleRequest(w http.ResponseWriter, r *http.Request) {
+
+	// Add application information to the context. Application instance can be directly passed to
+	// slog.Any since it implements slog.LogValuer interface.
+	ctx := loghelper.Context(r.Context(),
+		slog.Any("application", a),
+	)
+
+	var (
+		requestId = r.Header.Get("x-request-id")
+		userId    = r.URL.Query().Get("id")
+	)
+
+	// Some request-scope data can be extracted from the request and added
+	// to the context, so it can be passed to the callee and logged.
+	ctx = loghelper.Context(ctx,
+		slog.Group("request",
+			slog.String("id", requestId),
+		),
+		slog.Group("user",
+			slog.String("id", userId),
+		),
+	)
+
+	// context.Context contains application info, user id and request id they can be logged by the callee with minimal effort.
+	if err := handleGetUser(ctx, userId); err != nil {
+
+		/* This will dump the JSON log similar to below object:
+		{
+		  "time": "2023-11-24T20:31:58.408805-06:00",
+		  "level": "ERROR",
+		  "msg": "error occurred",
+		  "application": {             <<- from the context
+		    "name": "vovan",
+		    "version": {
+		      "major": 1,
+		      "minor": 7,
+		      "patch": 2
+		    },
+		    "build": {
+		      "hash": "20b8c3f"
+		    }
+		  },
+		  "request": {                <<- from the context
+		    "id": "b4133182-89a6-11ee-b9d1-0242ac120002"
+		  },
+		  "user": {                   <<- from the context
+		    "id": "8b50d0c8-015a-497c-b98a-cc69fec2f9ed"
+		  }
+		  "db": {                     <<- from dbGetUser
+		    "query": "SELECT first_name, last_name FROM users WHERE id=$1"
+		  },
+		  "error": {
+		    "msg": "error in handleGetUser: error getting user from database: sql: no rows in result set",
+		    "origin": "/Users/vovan/work/errors/example/main.go:55"
+		  },
+		  "execution_time": "2023-11-24T20:31:58.408777-06:00",  <<- handleGetUser
+		}
+		*/
+		slog.Error("error occurred",
+			loghelper.Attr(ctx, err),
+		)
+
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(http.StatusText(http.StatusInternalServerError)))
+		return
+	}
+
+	w.Write(nil)
 }
 
 func main() {
@@ -79,6 +184,14 @@ func main() {
 		),
 	)
 
+	var (
+		req = httptest.NewRequest(
+			http.MethodGet,
+			"/user?id=8b50d0c8-015a-497c-b98a-cc69fec2f9ed",
+			nil)
+		w = httptest.NewRecorder()
+	)
+
 	app := Application{
 		Name:  "vovan",
 		Build: "20b8c3f",
@@ -89,30 +202,73 @@ func main() {
 		},
 	}
 
-	// Use loghelper.Context to attach log attributes to pass them down to the callee.
-	ctx := loghelper.Context(context.Background(),
-		slog.Any("application", app),
-	)
+	req.Header.Set("x-request-id", "b4133182-89a6-11ee-b9d1-0242ac120002")
+	app.HandleRequest(w, req)
+	res := w.Result()
+	defer res.Body.Close()
 
-	// loghelper.Attr can be used instead of slog attribute constructors
-	// if we want to extract log attributes from context or errors.
-	slog.Info("application started",
-		loghelper.Attr(
-			ctx,
-			slog.String("x", "x"),
-		),
-	)
-
-	if err := doSomething(ctx); err != nil {
-		slog.Error("error occurred",
-			loghelper.Attr(ctx, err),
-		)
+	data, err := io.ReadAll(res.Body)
+	if err != nil {
+		panic(fmt.Sprintf("expected error to be nil got %v", err))
 	}
+
+	fmt.Println(string(data))
 }
 ```
 
 ```json
-{"time":"2023-11-19T18:58:47.226154-06:00","level":"INFO","msg":"application started","application":{"name":"vovan","version":{"major":1,"minor":7,"patch":2},"build":{"hash":"20b8c3f"}},"x":"x"}
-{"time":"2023-11-19T18:58:47.226378-06:00","level":"INFO","msg":"logging in doSomethingElse","application":{"name":"vovan","version":{"major":1,"minor":7,"patch":2},"build":{"hash":"20b8c3f"}}}
-{"time":"2023-11-19T18:58:47.226424-06:00","level":"ERROR","msg":"error occurred","application":{"name":"vovan","version":{"major":1,"minor":7,"patch":2},"build":{"hash":"20b8c3f"}},"b":"b","c":"c","a":"a","error":"error in doSomething: error in doSomethingElse"}
+{
+  "time": "2023-11-24T20:42:49.572426-06:00",
+  "level": "INFO",
+  "msg": "getting user from the database",
+  "application": {
+    "name": "vovan",
+    "version": {
+      "major": 1,
+      "minor": 7,
+      "patch": 2
+    },
+    "build": {
+      "hash": "20b8c3f"
+    }
+  },
+  "request": {
+    "id": "b4133182-89a6-11ee-b9d1-0242ac120002"
+  },
+  "user": {
+    "id": "8b50d0c8-015a-497c-b98a-cc69fec2f9ed"
+  }
+}
+```
+```json
+{
+  "time": "2023-11-24T20:42:49.572713-06:00",
+  "level": "ERROR",
+  "msg": "error occurred",
+  "application": {
+    "name": "vovan",
+    "version": {
+      "major": 1,
+      "minor": 7,
+      "patch": 2
+    },
+    "build": {
+      "hash": "20b8c3f"
+    }
+  },
+  "db": {
+    "query": "SELECT first_name, last_name FROM users WHERE id=$1"
+  },
+  "error": {
+    "msg": "error in handleGetUser: error getting user from database: sql: no rows in result set",
+    "origin": "/Users/vovan/work/errors/example/main.go:79"
+  },
+  "execution_time": "2023-11-24T20:42:49.572683-06:00",
+  "request": {
+    "id": "b4133182-89a6-11ee-b9d1-0242ac120002"
+  },
+  "user": {
+    "id": "8b50d0c8-015a-497c-b98a-cc69fec2f9ed"
+  }
+}
 ```

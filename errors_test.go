@@ -220,7 +220,7 @@ func (a InlineArgs) LogValue() slog.Value {
 
 const expectedLog = `{"time":"","level":"INFO","msg":"application started","application":{"name":"vovan","version":{"major":1,"minor":7,"patch":2},"build":{"hash":"20b8c3f"}},"arg1":"ARG1","arg2":"ARG2","arg3":"ARG3","x":"x"}
 {"time":"","level":"INFO","msg":"logging in doSomethingElse","application":{"name":"vovan","version":{"major":1,"minor":7,"patch":2},"build":{"hash":"20b8c3f"}},"arg1":"ARG1","arg2":"ARG2","arg3":"ARG3"}
-{"time":"","level":"ERROR","msg":"error occurred","a":"a","application":{"name":"vovan","version":{"major":1,"minor":7,"patch":2},"build":{"hash":"20b8c3f"}},"arg1":"ARG1","arg2":"ARG2","arg3":"ARG3","b":"b","c":"c","error":"error in doSomething: error in doSomethingElse"}
+{"time":"","level":"ERROR","msg":"error occurred","a":"a","application":{"name":"vovan","version":{"major":1,"minor":7,"patch":2},"build":{"hash":"20b8c3f"}},"arg1":"ARG1","arg2":"ARG2","arg3":"ARG3","b":"b","c":"c","error":{"msg":"error in doSomething: error in doSomethingElse","origin":""}}
 `
 
 func TestErrorLogging(t *testing.T) {
@@ -230,7 +230,7 @@ func TestErrorLogging(t *testing.T) {
 		slog.NewJSONHandler(&buf, &slog.HandlerOptions{
 			Level: slog.LevelInfo,
 			ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-				if a.Key == "time" {
+				if a.Key == "time" || a.Key == "origin" {
 					a.Value = slog.StringValue("")
 				}
 				return a
