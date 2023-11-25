@@ -1,5 +1,41 @@
 # Structured Errors
 
+### Problem Statement:
+
+- Locating and categorizing related logs is often challenging. One solution involves incorporating a trace or request 
+id log attribute into a `slog.Logger` instance and transmitting it to the caller. However, the preference is to 
+circumvent the necessity of ubiquitously passing a logger instance as a function parameter.
+- Logging spam is a common anti-pattern observed in Go programs. When an error is caught, it is logged with additional 
+data and then passed up the call stack. Each successive caller logs the error again, leading to redundant logging. 
+To address this, errors should be wrapped at the point of origin, with the option to include useful data as log
+attributes. The top-level caller can then log the error, revealing all the log attributes collected during the error's
+propagation through the call stack.
+- The origin of an error (where it was first detected) is often unknown.
+
+### Requirements:
+
+- Compatibility with the native Golang structured logging library slog.
+- Traceable logs: Information such as request or trace id should be attachable to a context and passed down to the
+callee for logging. Utilizing the native Go `context.Context` for passing logging arguments is ideal.
+- Wrappable errors: Errors should be capable of being wrapped, with the ability to accumulate log attributes 
+for comprehensive logging at the top level.
+- Tracking the error origin: The origin of an error, at a minimum indicating the file and line, should be 
+maintained and attached to the error as a log attribute.
+
+### Solution
+
+The `github.com/vovanec/errors` library provides (yet another) errors library with the following features:
+
+- Compatibility with Go stdlib errors, including errors wrapping, unwrapping, and assertion through `As()` and `Is()`.
+- Ability to capture and preserve log attributes, enabling the top-level caller to log them later.
+- Capability to capture and preserve the error origin (file and line) as log attributes.
+- The `github.com/vovanec/errors/loghelper` helper package offers the following convenience functions:
+    - `loghelper.Context`: Adds log attributes as a value to the context.
+    - `loghelper.Attr`: Similar to `slog.Any`, but allows extracting log attributes from the context and errors.
+
+
+### Example code
+
 ```golang
 
 package main
