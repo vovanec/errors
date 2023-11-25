@@ -19,7 +19,7 @@ const (
 
 type sError struct {
 	err    error
-	origin errorOrigin
+	origin ErrorOrigin
 	attrs  map[string]slog.Attr
 }
 
@@ -41,6 +41,35 @@ func (e *sError) LogValue() slog.Value {
 	return slog.GroupValue(attrs...)
 }
 
+func (e *sError) Origin() ErrorOrigin {
+	return e.origin
+}
+
+func (e *sError) StructuredError() string {
+	if len(e.attrs) < 1 {
+		return e.err.Error()
+	}
+
+	attrs := internal.MapValues(e.attrs)
+	sort.Slice(attrs, func(i, j int) bool {
+		return attrs[i].Key < attrs[j].Key
+	})
+
+	var formattedParts []string
+	for _, a := range attrs {
+		if a.Key == errKey || a.Key == msgKey {
+			continue
+		}
+		formattedParts = append(formattedParts, a.String())
+	}
+
+	if len(formattedParts) < 1 {
+		return e.err.Error()
+	}
+
+	return fmt.Sprintf("%s: %s", e.err.Error(), strings.Join(formattedParts, " "))
+}
+
 func (e *sError) Error() string {
 	return e.err.Error()
 }
@@ -50,35 +79,11 @@ func (e *sError) Format(s fmt.State, verb rune) {
 	case 'v':
 		if s.Flag('+') || s.Flag('#') {
 
-			if len(e.attrs) < 1 {
-				_, _ = fmt.Fprint(s, e.Error())
-				return
-			}
-
-			attrs := internal.MapValues(e.attrs)
-			sort.Slice(attrs, func(i, j int) bool {
-				return attrs[i].Key < attrs[j].Key
-			})
-
-			var formattedParts []string
-			for _, a := range attrs {
-				if a.Key == errKey || a.Key == msgKey {
-					continue
-				}
-				formattedParts = append(formattedParts, a.String())
-			}
-
-			if len(formattedParts) < 1 {
-				_, _ = fmt.Fprint(s, e.Error())
-				return
-			}
-
-			_, _ = fmt.Fprintf(s, "%s: %s", e.err.Error(), strings.Join(formattedParts, " "))
+			_, _ = fmt.Fprint(s, e.StructuredError())
 			return
 		}
 
-		_, _ = fmt.Fprint(s, e.Error())
-
+		fallthrough
 	case 's':
 		_, _ = fmt.Fprint(s, e.Error())
 	}
@@ -136,7 +141,7 @@ func Wrap(err error, message string, args ...any) error {
 
 	var (
 		sErr   *sError
-		origin errorOrigin
+		origin ErrorOrigin
 	)
 	if As(err, &sErr) {
 		origin = sErr.origin
@@ -175,25 +180,25 @@ func As(err error, target interface{}) bool {
 	return errors.As(err, target)
 }
 
-func getOrigin(n int) errorOrigin {
+func getOrigin(n int) ErrorOrigin {
 	if _, file, line, ok := runtime.Caller(n); ok {
-		return errorOrigin{
+		return ErrorOrigin{
 			Line: line,
 			File: file,
 		}
 	}
-	return errorOrigin{}
+	return ErrorOrigin{}
 }
 
-type errorOrigin struct {
+type ErrorOrigin struct {
 	Line int
 	File string
 }
 
-func (o errorOrigin) String() string {
+func (o ErrorOrigin) String() string {
 	return fmt.Sprintf("%s:%d", o.File, o.Line)
 }
 
-func (o errorOrigin) Empty() bool {
+func (o ErrorOrigin) Empty() bool {
 	return o.File == ""
 }
