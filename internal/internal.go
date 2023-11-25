@@ -55,7 +55,7 @@ func ParseLogArgs(args []any, f AttrFunc) {
 	}
 }
 
-func ToSlice[K comparable, V any](m map[K]V) []V {
+func MapValues[K comparable, V any](m map[K]V) []V {
 	var ret []V
 	for _, a := range m {
 		ret = append(ret, a)
@@ -73,7 +73,7 @@ func argsToAttrs(args []any) ([]slog.Attr, []any) {
 		}
 		return []slog.Attr{slog.Any(x, args[1])}, args[2:]
 	case context.Context:
-		return ToSlice(logAttrsFromContext(x)), args[1:]
+		return MapValues(logAttrsFromContext(x)), args[1:]
 	case slog.Attr:
 		return []slog.Attr{x}, args[1:]
 	case error:

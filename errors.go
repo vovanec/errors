@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"runtime"
 	"sort"
+	"strings"
 
 	"github.com/vovanec/errors/internal"
 )
@@ -31,7 +32,7 @@ func (e *sError) LogValue() slog.Value {
 			slog.String(errOriginKey, e.origin.String()),
 		)
 	}
-	attrs := append(internal.ToSlice(e.attrs), errGroup)
+	attrs := append(internal.MapValues(e.attrs), errGroup)
 
 	sort.Slice(attrs, func(i, j int) bool {
 		return attrs[i].Key < attrs[j].Key
@@ -42,6 +43,45 @@ func (e *sError) LogValue() slog.Value {
 
 func (e *sError) Error() string {
 	return e.err.Error()
+}
+
+func (e *sError) Format(s fmt.State, verb rune) {
+	switch verb {
+	case 'v':
+		if s.Flag('+') || s.Flag('#') {
+
+			if len(e.attrs) < 1 {
+				_, _ = fmt.Fprint(s, e.Error())
+				return
+			}
+
+			attrs := internal.MapValues(e.attrs)
+			sort.Slice(attrs, func(i, j int) bool {
+				return attrs[i].Key < attrs[j].Key
+			})
+
+			var formattedParts []string
+			for _, a := range attrs {
+				if a.Key == errKey || a.Key == msgKey {
+					continue
+				}
+				formattedParts = append(formattedParts, a.String())
+			}
+
+			if len(formattedParts) < 1 {
+				_, _ = fmt.Fprint(s, e.Error())
+				return
+			}
+
+			_, _ = fmt.Fprintf(s, "%s: %s", e.err.Error(), strings.Join(formattedParts, " "))
+			return
+		}
+
+		_, _ = fmt.Fprint(s, e.Error())
+
+	case 's':
+		_, _ = fmt.Fprint(s, e.Error())
+	}
 }
 
 // Unwrap returns the result of calling the Unwrap method on err, if error's
