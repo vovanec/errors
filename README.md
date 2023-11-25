@@ -212,13 +212,10 @@ func (a Application) HandleRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-
-	slog.SetDefault(
-		slog.New(
-			slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
-				Level: slog.LevelInfo,
-			}),
-		),
+	
+	loghelper.InitLogging(
+		loghelper.WithLevel(slog.LevelDebug),
+		loghelper.WithOutput(os.Stderr),
 	)
 
 	var (
