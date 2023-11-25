@@ -1,4 +1,4 @@
-package errors
+package serror
 
 type ErrorOriginer interface {
 	Origin() ErrorOrigin

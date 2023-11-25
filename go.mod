@@ -1,4 +1,4 @@
-module github.com/vovanec/errors
+module github.com/vovanec/serror
 
 go 1.21
 

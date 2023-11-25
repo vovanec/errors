@@ -1,4 +1,4 @@
-package errors
+package serror
 
 import (
 	"errors"
@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/vovanec/errors/internal"
+	"github.com/vovanec/serror/internal"
 )
 
 const (

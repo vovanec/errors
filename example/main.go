@@ -11,8 +11,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/vovanec/errors"
-	"github.com/vovanec/errors/loghelper"
+	"github.com/vovanec/serror"
+	"github.com/vovanec/serror/loghelper"
 )
 
 type AppVersion struct {
@@ -76,7 +76,7 @@ func dbGetUser(ctx context.Context, _ string) error {
 
 	// code to get user data from the database
 
-	return errors.Wrap(sql.ErrNoRows, "error getting user from database",
+	return serror.Wrap(sql.ErrNoRows, "error getting user from database",
 		// Log attributes can be attached to the error, they will be logged by the caller.
 		loghelper.Attr(
 			slog.Group("db",
@@ -89,7 +89,7 @@ func dbGetUser(ctx context.Context, _ string) error {
 func handleGetUser(ctx context.Context, userId string) error {
 	if err := dbGetUser(ctx, userId); err != nil {
 		// Error can be wrapped multiple times and additional log attributes can be attached.
-		return errors.Wrap(err, "error in handleGetUser",
+		return serror.Wrap(err, "error in handleGetUser",
 			// Log attributes can be attached to the error, they will be logged by the caller.
 			loghelper.Attr(
 				slog.Any("execution_time", time.Now()),

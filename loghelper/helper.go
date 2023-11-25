@@ -7,7 +7,7 @@ import (
 	"os"
 	"sort"
 
-	"github.com/vovanec/errors/internal"
+	"github.com/vovanec/serror/internal"
 )
 
 // Attr parses log args and returns a either a single log attribute or unnamed group.
