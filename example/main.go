@@ -172,15 +172,21 @@ func (a Application) HandleRequest(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 
-	slog.SetDefault(
-		slog.New(
-			slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
-				Level: slog.LevelInfo,
-			}),
-		),
+	loghelper.InitLogging(
+		loghelper.WithLevel(slog.LevelDebug),
+		loghelper.WithOutput(os.Stderr),
 	)
 
 	var (
+		app = Application{
+			Name:  "vovan",
+			Build: "20b8c3f",
+			Version: AppVersion{
+				Major: 1,
+				Minor: 7,
+				Patch: 2,
+			},
+		}
 		req = httptest.NewRequest(
 			http.MethodGet,
 			"/user?id=8b50d0c8-015a-497c-b98a-cc69fec2f9ed",
@@ -188,25 +194,15 @@ func main() {
 		w = httptest.NewRecorder()
 	)
 
-	app := Application{
-		Name:  "vovan",
-		Build: "20b8c3f",
-		Version: AppVersion{
-			Major: 1,
-			Minor: 7,
-			Patch: 2,
-		},
-	}
-
 	req.Header.Set("x-request-id", "b4133182-89a6-11ee-b9d1-0242ac120002")
 	app.HandleRequest(w, req)
+
 	res := w.Result()
 	defer res.Body.Close()
 
-	data, err := io.ReadAll(res.Body)
-	if err != nil {
+	if data, err := io.ReadAll(res.Body); err != nil {
 		panic(fmt.Sprintf("expected error to be nil got %v", err))
+	} else {
+		fmt.Println(string(data))
 	}
-
-	fmt.Println(string(data))
 }

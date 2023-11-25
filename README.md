@@ -27,11 +27,12 @@ maintained and attached to the error as a log attribute.
 The `github.com/vovanec/errors` library provides (yet another) errors library with the following features:
 
 - Compatibility with Go stdlib errors, including errors wrapping, unwrapping, and assertion through `As()` and `Is()`.
-- Ability to capture and preserve log attributes, enabling the top-level caller to log them later.
+- Ability to capture and preserve `slog` log attributes, enabling the top-level caller to log them later.
 - Capability to capture and preserve the error origin (file and line) as log attributes.
 - The `github.com/vovanec/errors/loghelper` helper package offers the following convenience functions:
     - `loghelper.Context`: Adds log attributes as a value to the context.
     - `loghelper.Attr`: Similar to `slog.Any`, but allows extracting log attributes from the context and errors.
+    - `logghelper.InitLogging`: Convenience function to initialize default `slog` logger.
 
 
 ### Example code
