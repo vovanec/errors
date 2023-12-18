@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"runtime"
 	"sort"
 	"strings"
 
@@ -15,12 +14,14 @@ const (
 	errKey       = "error"
 	msgKey       = "msg"
 	errOriginKey = "origin"
+	stackKey     = "stack"
 )
 
 type sError struct {
 	err    error
-	origin ErrorOrigin
+	origin Origin
 	attrs  map[string]slog.Attr
+	stack  StackTrace
 }
 
 func (e *sError) LogValue() slog.Value {
@@ -29,7 +30,8 @@ func (e *sError) LogValue() slog.Value {
 	if !e.origin.Empty() {
 		errGroup = slog.Group(errKey,
 			slog.String(msgKey, e.err.Error()),
-			slog.String(errOriginKey, e.origin.String()),
+			// slog.String(errOriginKey, e.origin.String()),
+			slog.String(stackKey, e.stack.String()),
 		)
 	}
 	attrs := append(internal.MapValues(e.attrs), errGroup)
@@ -41,8 +43,12 @@ func (e *sError) LogValue() slog.Value {
 	return slog.GroupValue(attrs...)
 }
 
-func (e *sError) Origin() ErrorOrigin {
+func (e *sError) Origin() Origin {
 	return e.origin
+}
+
+func (e *sError) StackTrace() []Origin {
+	return e.stack
 }
 
 func (e *sError) StructuredError() string {
@@ -63,11 +69,16 @@ func (e *sError) StructuredError() string {
 		formattedParts = append(formattedParts, a.String())
 	}
 
-	if len(formattedParts) < 1 {
+	if len(formattedParts) < 1 && len(e.stack) < 1 {
 		return e.err.Error()
 	}
 
-	return fmt.Sprintf("%s: %s", e.err.Error(), strings.Join(formattedParts, " "))
+	formattedParts = append(
+		formattedParts,
+		fmt.Sprintf("stack=%s", e.stack),
+	)
+
+	return fmt.Sprintf("%s: %s", e.err, strings.Join(formattedParts, " "))
 }
 
 func (e *sError) Error() string {
@@ -78,11 +89,9 @@ func (e *sError) Format(s fmt.State, verb rune) {
 	switch verb {
 	case 'v':
 		if s.Flag('+') || s.Flag('#') {
-
 			_, _ = fmt.Fprint(s, e.StructuredError())
 			return
 		}
-
 		fallthrough
 	case 's':
 		_, _ = fmt.Fprint(s, e.Error())
@@ -110,10 +119,12 @@ func New(message string, args ...any) error {
 		return errors.New(message)
 	}
 
+	origin := getOrigin(2)
 	return &sError{
 		err:    errors.New(message),
 		attrs:  am,
-		origin: getOrigin(2),
+		origin: origin,
+		stack:  []Origin{origin},
 	}
 }
 
@@ -141,18 +152,23 @@ func Wrap(err error, message string, args ...any) error {
 
 	var (
 		sErr   *sError
-		origin ErrorOrigin
+		origin Origin
+		stack  []Origin
 	)
+
 	if As(err, &sErr) {
 		origin = sErr.origin
+		stack = append(sErr.stack, getOrigin(2))
 	} else {
 		origin = getOrigin(2)
+		stack = []Origin{origin}
 	}
 
 	return &sError{
 		err:    fmt.Errorf("%s: %w", message, err),
 		attrs:  am,
 		origin: origin,
+		stack:  stack,
 	}
 }
 
@@ -178,27 +194,4 @@ func Is(err, target error) bool {
 // target to that error value and returns true. Otherwise, it returns false.
 func As(err error, target interface{}) bool {
 	return errors.As(err, target)
-}
-
-func getOrigin(n int) ErrorOrigin {
-	if _, file, line, ok := runtime.Caller(n); ok {
-		return ErrorOrigin{
-			Line: line,
-			File: file,
-		}
-	}
-	return ErrorOrigin{}
-}
-
-type ErrorOrigin struct {
-	Line int
-	File string
-}
-
-func (o ErrorOrigin) String() string {
-	return fmt.Sprintf("%s:%d", o.File, o.Line)
-}
-
-func (o ErrorOrigin) Empty() bool {
-	return o.File == ""
 }
